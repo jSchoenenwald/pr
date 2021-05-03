@@ -8,8 +8,8 @@ Authors@R:
            email = "johannes.schoenenwald@gmail.com")
 Description: This package provides a comprehensive front-end for fitting machine-learning based polynomial regression functions.
 Imports:
-    RcppEigen
-    fastglm
+    RcppEigen,
+    fastglm,
     Rfast
 Encoding: UTF-8
 LazyData: true
