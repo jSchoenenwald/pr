@@ -1,15 +1,16 @@
 Package: prometheus
-Title: What the Package Does (One Line, Title Case)
+Title: Prometheus
 Version: 0.0.0.9000
 Authors@R: 
-    person(given = "First",
-           family = "Last",
-           role = c("aut", "cre"),
-           email = "first.last@example.com",
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to
-    pick a license
+    person(given = "Johannes",
+           family = "Schoenenwald",
+           role = "cre",
+           email = "johannes.schoenenwald@gmail.com")
+Description: This package provides a comprehensive front-end for fitting machine-learning based polynomial regression functions.
+Imports:
+    RcppEigen
+    fastglm
+    Rfast
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
