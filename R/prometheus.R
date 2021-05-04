@@ -871,7 +871,10 @@ pr <- function(y,
                initialModel = NULL,
                asDummy = NULL){
   
-  x <- transform(x, col = asDummy)
+  if(is.numeric(asDummy)){
+      x <- transform(x, col = asDummy)
+  }
+
   
   x <- apply(x, 2, as.numeric)
   
