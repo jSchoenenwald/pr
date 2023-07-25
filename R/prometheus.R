@@ -22,7 +22,8 @@ select_regressors <- function(y,
                               verbose,
                               glmFamily,
                               weights,
-                              initialModel){
+                              initialModel,
+                              fixedIntercept){
   start.time <- Sys.time()
   x <- as.matrix(x)
   folds <- NULL
@@ -60,7 +61,8 @@ select_regressors <- function(y,
                                  rowsToTest = parameter,
                                  decomposition = decomposition,
                                  glmFamily = glmFamily,
-                                 weights = weights))
+                                 weights = weights,
+                                 fixedIntercept = fixedIntercept))
       }
       interceptInfo <- mean(sapply(folds, tool))
     } else {
@@ -72,10 +74,11 @@ select_regressors <- function(y,
                                          formula = formula,
                                          decomposition = decomposition,
                                          glmFamily = glmFamily,
-                                         weights = weights)
+                                         weights = weights,
+                                         fixedIntercept = fixedIntercept)
     }
     #information <- c(interceptInfo + abs(interceptInfo), interceptInfo)
-    information <- c(interceptInfo + 10, interceptInfo)
+    #information <- c(interceptInfo + 10, interceptInfo)
     candidate <- diag(c(rep(1, dim(x)[2])))
     colnames(candidate) <- colnames(x)
     chosenMatrix <- c()
@@ -114,12 +117,6 @@ select_regressors <- function(y,
          (is.null(maxNumberTerms) ||
           step + 1 - back_activation <= maxNumberTerms) & stop != 1){
     
-    if (information[step + 1] > 0){
-      threshold = (1 + complexity) * information[step + 1]
-    } else {
-      threshold = (1 - complexity) * information[step + 1] 
-    }
-    
     # Forward step
     forwardStep <- estimate_forward(candidate = candidate,
                                     x = x,
@@ -136,9 +133,15 @@ select_regressors <- function(y,
                                     rowsToTest = rowsToTest,
                                     decomposition = decomposition,
                                     glmFamily = glmFamily,
-                                    weights = weights)
+                                    weights = weights,
+                                    fixedIntercept = fixedIntercept)
     #update step and information
     step <- step + 1
+    if (information[step + 1] > 0){
+      threshold = (1 + complexity) * information[step + 1]
+    } else {
+      threshold = (1 - complexity) * information[step + 1] 
+    }
     information <- forwardStep$information
     numFit <- forwardStep$numFit
     # update the chosen matrix if the conditions of the while cycle are still valid
@@ -173,7 +176,8 @@ select_regressors <- function(y,
                                           rowsToTest = rowsToTest,
                                           decomposition = decomposition,
                                           glmFamily = glmFamily,
-                                          weights = weights)
+                                          weights = weights,
+                                          fixedIntercept = fixedIntercept)
         backwardIndicator[step] <- !is.null(backwardStep$chosen)
         numFitB <- backwardStep$numFitB
         if (!is.null(backwardStep$chosen)) {
@@ -281,7 +285,8 @@ estimate_forward <- function(candidate,
                              rowsNumber,
                              decomposition,
                              glmFamily,
-                             weights){
+                             weights,
+                             fixedIntercept){
   newInfo <- c()
   # computes all candidate models
   for (l in 1:dim(candidate)[1]) {
@@ -305,7 +310,8 @@ estimate_forward <- function(candidate,
                                  rowsToTest = parameter,
                                  decomposition = decomposition,
                                  glmFamily = glmFamily,
-                                 weights = weights))
+                                 weights = weights,
+                                 fixedIntercept = fixedIntercept))
       }
       newInfo[l] <- mean(sapply(folds, tool))
     } else {
@@ -317,7 +323,8 @@ estimate_forward <- function(candidate,
                                       formula = formula,
                                       decomposition = decomposition,
                                       glmFamily = glmFamily,
-                                      weights = weights)
+                                      weights = weights,
+                                      fixedIntercept = fixedIntercept)
     }
   }
   chosen <- which.min(newInfo)
@@ -350,7 +357,8 @@ estimate_backward <- function(removable,
                               rowsNumber,
                               decomposition,
                               glmFamily,
-                              weights){
+                              weights,
+                              fixedIntercept){
   newInfo <- c()
   chosen <- NULL
   nActivation <- 0
@@ -369,7 +377,8 @@ estimate_backward <- function(removable,
                                  rowsToTest = parameter,
                                  decomposition = decomposition,
                                  glmFamily = glmFamily,
-                                 weights = weights))
+                                 weights = weights,
+                                 fixedIntercept = fixedIntercept))
       }
       newInfo[l] <- mean(sapply(folds, tool))
     }else{
@@ -381,7 +390,8 @@ estimate_backward <- function(removable,
                                       formula = formula, 
                                       decomposition = decomposition,
                                       glmFamily = glmFamily,
-                                      weights = weights)
+                                      weights = weights,
+                                      fixedIntercept = fixedIntercept)
     }
   }
   numFitB <- c(numFitB, length(removable))
@@ -410,7 +420,8 @@ compute_criterion <- function(criterion,
                               rowsToTest,
                               decomposition,
                               glmFamily,
-                              weights){
+                              weights,
+                              fixedIntercept){
   require(RcppEigen)
   require(fastglm)
   
@@ -431,10 +442,24 @@ compute_criterion <- function(criterion,
   if (glmFamily$family == "gaussian" && glmFamily$link == "identity"){
     #if to manage the intercept case
     if (is.null(x)) {
-      k <- 1
-      res <- y - mean(y)
+      #if to manage the fixed intercept case
+      if (!is.null(fixedIntercept)){
+        k <- 0
+        res <- y - fixedIntercept
+      }else{
+        k <- 1
+        res <- y - mean(y)
+      }
+      
     } else{
       k <- ncol(x)
+      #if to manage the fixed intercept case
+      if (!is.null(fixedIntercept)){
+        k <- k - 1
+        x <- x[ , -1, drop = FALSE]
+        y <- y - fixedIntercept
+        
+      }
       fit <- RcppEigen::fastLmPure(x, y, method = decompositionType)
       res <- fit$residuals
     }
@@ -443,9 +468,9 @@ compute_criterion <- function(criterion,
     ssr <- as.numeric(t(res) %*% res)
     #output according to the chosen criterion
     if (criterion == "AIC") {
-      computedCriterion <- 2 * (k + 1) + n * (log(ssr / n) + log(2 * pi) + 1)
+      computedCriterion <- 2 * k + n * (log(ssr / n) + log(2 * pi) + 1)
     } else if (criterion == "BIC") {
-      computedCriterion <- log(n) * (k + 1) + n * (log(ssr / n) + log(2 * pi) + 1)
+      computedCriterion <- log(n) * k + n * (log(ssr / n) + log(2 * pi) + 1)
     } else{
       s <- y - mean(y)
       sst <- as.numeric(t(s) %*% s)
@@ -464,7 +489,7 @@ compute_criterion <- function(criterion,
         rowsToTrain <- rows[c(-rowsToTest)]
         yTrain <- as.vector(y[rowsToTrain])
         yTest <- as.vector(y[rowsToTest])
-        if (is.null(x) == FALSE) {
+        if (!is.null(x)) {
           #create the matrix to fit the model and the matrix to test the model
           xTrain <- (x[rowsToTrain, , drop = FALSE ])
           xTest <- (x[rowsToTest, , drop = FALSE ])
@@ -473,8 +498,12 @@ compute_criterion <- function(criterion,
           beta <- fitRMSEP$coefficients
           #compute the predicted valus with the xTest matrix
           yPred <- beta %*% t(xTest)
-        } else{
-          yPred <- rep(mean(yTrain), n - length(rowsToTrain))
+        } else {
+          if (!is.null(fixedIntercept)){
+            yPred <- rep(0, n - length(rowsToTrain))
+          } else {
+            yPred <- rep(mean(yTrain), n - length(rowsToTrain))
+          }
         }
         #compute the rmsep
         diff <- yPred - yTest
@@ -753,12 +782,21 @@ get_selected_terms <- function(chosenMatrix){
 #' @export
 #' @examples 
 
-get_regression_model <- function(y, x, chosenMatrix){
+get_regression_model <- function(y, x, chosenMatrix, fixedIntercept){
   selectedTerms <- get_selected_terms(chosenMatrix)
   designMatrix <- get_design_matrix(chosenMatrix, x)
   colnames(designMatrix) <- selectedTerms
   fullMatrix <- as.data.frame(cbind(y, designMatrix))
   lm <- lm(y ~ ., data = fullMatrix, model = TRUE)
+  if (!is.null(fixedIntercept)){
+    lmFixedIntercept <- lm(I(y - fixedIntercept) ~ 0 + ., data = fullMatrix, model = TRUE)
+    lm$coefficients <- c(fixedIntercept, lmFixedIntercept$coefficients)
+    lm$residuals <- lmFixedIntercept$residuals
+    lm$effects <- lmFixedIntercept$effects
+    lm$fitted.values <- lmFixedIntercept$fitted.values + fixedIntercept
+    lm$df.residual <- lmFixedIntercept$df.residual
+    lm$fitted.values <- lmFixedIntercept$fitted.values + fixedIntercept
+  }
   return(lm)
 }
 
@@ -869,12 +907,13 @@ pr <- function(y,
                glmFamily = gaussian(link = "identity"),
                weights = rep(1, length(y)),
                initialModel = NULL,
-               asDummy = NULL){
+               asDummy = NULL,
+               fixedIntercept = NULL){
   
   if(is.numeric(asDummy)){
-      x <- transform(x, col = asDummy)
+    x <- transform(x, col = asDummy)
   }
-
+  
   
   x <- apply(x, 2, as.numeric)
   
@@ -918,7 +957,8 @@ pr <- function(y,
                                     verbose = verbose,
                                     glmFamily = glmFamily,
                                     weights = weights,
-                                    initialModel = initialModel)
+                                    initialModel = initialModel,
+                                    fixedIntercept = fixedIntercept)
   
   myMatrix <- myRegressors$chosenMatrix
   
@@ -926,7 +966,7 @@ pr <- function(y,
   
   designMatrix <- get_design_matrix(myMatrix, x)
   
-  myModel <- get_regression_model(y, x, myMatrix)
+  myModel <- get_regression_model(y, x, myMatrix, fixedIntercept)
   
   myInitialSettings <- list(y = y,
                             x = x,
@@ -967,3 +1007,4 @@ pr <- function(y,
   class(prometheus_obj) <- "lm"
   return(prometheus_obj)
 }
+
